@@ -60,3 +60,22 @@
 -- ) temp, team
 -- where team.team_id = match_winner
 -- order by wins desc, team_name
+
+--8--
+-- select team_name, player_name, runs from
+-- (
+-- select team_id, player_name, sum(runs_scored) as runs, row_number() over (partition by team_id order by sum(runs_scored) desc, player_name) as rank from
+-- season, match, ball_by_ball bb, batsman_scored bs, player_match, player
+-- where season.season_year = 2010
+--     and season.season_id = match.season_id
+--     and bb.match_id = match.match_id
+--     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+--     and bb.striker = player_match.player_id and bb.match_id = player_match.match_id
+--     and player.player_id = striker
+-- group by team_id, player_name
+-- ) temp, team
+-- where rank = 1
+--     and team.team_id = temp.team_id
+-- order by team_name
+
+--9--
