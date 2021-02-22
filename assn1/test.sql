@@ -29,29 +29,29 @@
 -- order by season_year
 
 --6--
-select season_year, team_name, rank from
-(
-select season_year, team_name, num, row_number() over (order by num desc, team_name) as rank from
-(
-select season_id, team_id, count(*) as num from
-(
-select distinct team_id, season.season_id, player_match.player_id
-from season, match, player_match, player, batting_style, country
-where season.season_id = match.season_id
-    and match.match_id = player_match.match_id
-    and player.player_id = player_match.player_id
-    and batting_style.batting_id = player.batting_hand
-    and batting_style.batting_hand = 'Left-hand bat'
-    and player.country_id = country.country_id
-    and country_name <> 'India'
-) temp
-group by team_id, season_id
-) temp2, season, team
-where temp2.team_id = team.team_id
-and temp2.season_id = season.season_id
-) temp3
-where rank <= 5
-order by season_year, team_name
+-- select season_year, team_name, rank from
+-- (
+-- select season_year, team_name, num, row_number() over (order by num desc, team_name) as rank from
+-- (
+-- select season_id, team_id, count(*) as num from
+-- (
+-- select distinct team_id, season.season_id, player_match.player_id
+-- from season, match, player_match, player, batting_style, country
+-- where season.season_id = match.season_id
+--     and match.match_id = player_match.match_id
+--     and player.player_id = player_match.player_id
+--     and batting_style.batting_id = player.batting_hand
+--     and batting_style.batting_hand = 'Left-hand bat'
+--     and player.country_id = country.country_id
+--     and country_name <> 'India'
+-- ) temp
+-- group by team_id, season_id
+-- ) temp2, season, team
+-- where temp2.team_id = team.team_id
+-- and temp2.season_id = season.season_id
+-- ) temp3
+-- where rank <= 5
+-- order by season_year, team_name
 
 --7--
 -- select team_name from
@@ -133,25 +133,63 @@ order by season_year, team_name
 -- limit 3
 -- ;
 
---10--
+--11--
+-- select season_year, player_name, season_wickets as num_wickets, season_runs as runs from
+-- -- left handed batsman with num_matches played in a season
+-- (select player.player_id, match.season_id, count(*) matches_played
+-- from player, player_match, match, batting_style
+-- where player.player_id = player_match.player_id
+--     and match.match_id = player_match.match_id
+--     and batting_style.batting_id = player.batting_hand
+--     and batting_style.batting_hand = 'Left-hand bat'
+-- group by player.player_id, match.season_id) matches,
 
+-- -- total runs per season for each player
+-- (select striker, season_id, sum(runs_scored) as season_runs
+-- from match, ball_by_ball bb, batsman_scored bs
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and bb.match_id = bs.match_id and bb.innings_no = bs.innings_no and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id -- join bs and bb
+--     and match.match_id = bb.match_id -- join match and bb - for season_id
+-- group by season_id, striker) runs,
 
+-- -- total wickets taken per season for each player
+-- (
+-- select bowler, season_id, count(*) as season_wickets
+-- from match, ball_by_ball bb, wicket_taken bs
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and bb.match_id = bs.match_id and bb.innings_no = bs.innings_no and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id -- join bs and bb
+--     and bs.kind_out in (1,2,4,6,7,8)
+--     and match.match_id = bb.match_id -- join match and bb - for season_id
+-- group by season_id, bowler
+--) wickets,
+-- player, season
 
+-- -- now do inner join of the three tables
+-- where matches.player_id = runs.striker and runs.striker = wickets.bowler and wickets.bowler = player.player_id
+--     and matches.season_id = runs.season_id and runs.season_id = wickets.season_id and wickets.season_id = season.season_id -- join all three tables + player, season for meta information
+--     and season_runs >= 150
+--     and season_wickets >= 5
+--     and matches_played >= 10
+-- order by num_wickets desc, runs desc, player_name
 
+--12--
+-- select temp2.match_id, player_name, team_name, wickets as num_wickets, season_year from
+-- (
+-- select match_id, bowler, team_bowling, wickets, row_number() over (partition by match_id order by wickets desc) as rank from
+-- (
+-- select bb.match_id, bowler, team_bowling, count(*) wickets
+-- from ball_by_ball bb, wicket_taken wt
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and wt.kind_out in (1,2,4,6,7,8) -- only bowler wickets
+--     and bb.match_id = wt.match_id and bb.over_id = wt.over_id and bb.ball_id = wt.ball_id and bb.innings_no = wt.innings_no -- join bb and wt
+-- group by bb.match_id, bowler, team_bowling
+-- ) temp
+-- ) temp2, player, team, match, season
+-- where rank = 1
+--     and player.player_id = temp2.bowler
+--     and team.team_id = temp2.team_bowling
+--     and match.match_id = temp2.match_id
+--     and match.season_id = season.season_id
+-- order by num_wickets desc, player_name, match_id
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+--13--

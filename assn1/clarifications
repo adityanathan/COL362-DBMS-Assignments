@@ -1,0 +1,8 @@
+1. Consider only innings 1, 2 for calculating team scores, batsmen scores, bowler’s wickets, boundaries, corresponding averages i.e., ignore innings 3, 4 if there is any super over situation.
+
+2. While calculating the batting average of a batsman, a batsman is said to be played a match if he has faced at least one ball as a striker. 
+
+3. A fielder will not be considered taking a wicket in any situation. Only a bowler is considered to be taken a wicket.
+
+q9
+There can be duplicates in the output if they are in the top 3. It is not the case that a pair of teams must only appear once. If the same team has multiple matches against a team with the same number of sixes in top 3, then you can return the same row multiple times. So, in short, if they're different matches, they can be simultaneously in the output, so you don't have to handle the duplicates.
