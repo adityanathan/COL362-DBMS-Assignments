@@ -316,8 +316,8 @@ having count(team_id) >= 3) filter_teams,
 --players who have conceded more than 20 runs in an over in a match
 (select bs.match_id, bs.over_id, bowler, sum(runs_scored)
 from ball_by_ball bb, batsman_scored bs
-where bb.innings_no not in (3,4) -- no superovers, etc.
-    and bs.match_id = bb.match_id and bs.over_id = bb.over_id and bs.ball_id = bb.ball_id and bs.innings_no = bb.innings_no -- join bb with bs
+where bs.match_id = bb.match_id and bs.over_id = bb.over_id and bs.ball_id = bb.ball_id and bs.innings_no = bb.innings_no -- join bb with bs
+    -- and bb.innings_no not in (3,4) -- no superovers, etc.
 group by bs.match_id, bs.over_id, bowler
 having sum(runs_scored) > 20) filter_concede
 
@@ -327,4 +327,39 @@ group by bowler
 where player.player_id = bowler
 order by num desc, player_name
 limit 5
+;
+--19--
+
+
+--20--
+select player_name as player_names from
+(
+select player_out, count(*) num from wicket_taken
+where over_id = 1
+group by player_out
+) temp, player
+where player.player_id = temp.player_out
+order by num desc, player_name
+limit 10
+;
+
+--21--
+select temp.match_id, t1.team_name as team_1_name, t2.team_name as team_2_name, win_team.team_name as match_winner_name, num as number_of_boundaries from
+(
+select match.match_id, count(*) num
+from match, ball_by_ball bb, batsman_scored bs
+where bb.innings_no = 2
+    and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+    and bs.runs_scored in (4,6) -- only boundaries
+    and match.match_id = bb.match_id -- join match, bb
+    and bb.team_batting = match.match_winner -- match winner must have been batting in the second innings to get boundaries
+    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no -- join bb, bs
+group by match.match_id
+) temp, match, team t1, team t2, team win_team
+where temp.match_id = match.match_id
+    and match.team_1 = t1.team_id
+    and match.team_2 = t2.team_id
+    and match.match_winner = win_team.team_id
+order by num, match_winner_name, team_1_name, team_2_name
+limit 3
 ;
