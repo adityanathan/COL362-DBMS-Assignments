@@ -301,3 +301,30 @@ where team.team_id = temp.team_id
 ) temp2 where rank = 1
 order by team_name
 ;
+
+--18--
+select player_name from
+(
+select bowler, count(*) as num from
+
+--players who have played in 3 or more teams
+(select player_id, count(team_id) from
+(select distinct player_id, team_id from player_match) temp
+group by player_id
+having count(team_id) >= 3) filter_teams,
+
+--players who have conceded more than 20 runs in an over in a match
+(select bs.match_id, bs.over_id, bowler, sum(runs_scored)
+from ball_by_ball bb, batsman_scored bs
+where bb.innings_no not in (3,4) -- no superovers, etc.
+    and bs.match_id = bb.match_id and bs.over_id = bb.over_id and bs.ball_id = bb.ball_id and bs.innings_no = bb.innings_no -- join bb with bs
+group by bs.match_id, bs.over_id, bowler
+having sum(runs_scored) > 20) filter_concede
+
+where filter_teams.player_id = filter_concede.bowler
+group by bowler
+) temp, player
+where player.player_id = bowler
+order by num desc, player_name
+limit 5
+;
