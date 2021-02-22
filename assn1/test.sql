@@ -279,10 +279,19 @@
 -- order by count(*) desc, win_team.team_name
 
 --17--
-
-
-
-
+select team_name, player_name, num as count from
+(
+select team_name, player_name, num, row_number() over (partition by temp.team_id order by num desc, player_name) rank from
+(
+select team_id, man_of_the_match, count(*) num
+from match, player_match pm
+where match.match_id = pm.match_id and match.man_of_the_match = pm.player_id
+group by team_id, man_of_the_match
+) temp, team, player
+where team.team_id = temp.team_id
+    and player.player_id = man_of_the_match
+) temp2 where rank = 1
+order by team_name
 
 
 
