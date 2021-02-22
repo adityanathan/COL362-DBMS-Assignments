@@ -200,9 +200,7 @@ order by num_wickets desc, runs desc, player_name
 ;
 
 --12--
-select temp2.match_id, player_name, team_name, wickets as num_wickets, season_year from
-(
-select match_id, bowler, team_bowling, wickets, row_number() over (partition by match_id order by wickets desc) as rank from
+select temp.match_id, player_name, team_name, wickets as num_wickets, season_year from
 (
 select bb.match_id, bowler, team_bowling, count(*) wickets
 from ball_by_ball bb, wicket_taken wt
@@ -210,15 +208,13 @@ where bb.innings_no not in (3,4) -- no superovers etc.
     and wt.kind_out in (1,2,4,6,7,8) -- only bowler wickets
     and bb.match_id = wt.match_id and bb.over_id = wt.over_id and bb.ball_id = wt.ball_id and bb.innings_no = wt.innings_no -- join bb and wt
 group by bb.match_id, bowler, team_bowling
-) temp
-) temp2, player, team, match, season
-where rank = 1
-    and player.player_id = temp2.bowler
-    and team.team_id = temp2.team_bowling
-    and match.match_id = temp2.match_id
+) temp, player, team, match, season
+where bowler = player.player_id
+    and team_bowling = team.team_id
+    and temp.match_id = match.match_id
     and match.season_id = season.season_id
 order by num_wickets desc, player_name, match_id
-;
+limit 1;
 
 --13--
 select player_name from
@@ -236,4 +232,56 @@ having count(*) = (select count(*) from season) -- gives me 9 = total no. of sea
 ) temp2, player
 where temp2.player_id = player.player_id
 order by player_name
+;
+
+--15--
+select season_year, runs_per_season.player_name as top_batsman, runs as max_runs, wickets_per_season.player_name as top_bowler, wickets as max_wickets from
+(select * from
+(
+select season_id, player_name, runs, row_number() over (partition by season_id order by runs desc, player_name) as run_rank from
+(
+select season_id, striker, sum(runs_scored) runs
+from batsman_scored bs, ball_by_ball bb, match
+where bb.innings_no not in (3,4) -- no superovers etc.
+    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+    and match.match_id = bb.match_id
+group by season_id, striker
+) temp, player
+where player.player_id = striker
+) temp2
+where run_rank = 2
+) runs_per_season,
+
+(select * from
+(
+select season_id, player_name, wickets, row_number() over (partition by season_id order by wickets desc, player_name) as wt_rank from
+(
+select season_id, bowler, count(*) wickets
+from wicket_taken wt, ball_by_ball bb, match
+where bb.innings_no not in (3,4) -- no superovers etc.
+    and wt.kind_out in (1,2,4,6,7,8) -- only bowler wickets
+    and bb.match_id = wt.match_id and bb.over_id = wt.over_id and bb.ball_id = wt.ball_id and bb.innings_no = wt.innings_no
+    and match.match_id = bb.match_id
+group by season_id, bowler
+) temp, player
+where player.player_id = bowler
+) temp2
+where wt_rank = 2
+) wickets_per_season, season
+
+where runs_per_season.season_id = wickets_per_season.season_id and wickets_per_season.season_id = season.season_id
+order by season_year
+;
+
+--16--
+select win_team.team_name
+from season, match, team t1, team t2, team win_team
+where season_year = 2008
+    and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+    and season.season_id = match.season_id
+    and match.team_1 = t1.team_id and match.team_2 = t2.team_id and match.match_winner = win_team.team_id
+    and (t1.team_name = 'Royal Challengers Bangalore' or t2.team_name = 'Royal Challengers Bangalore')
+    and win_team.team_name <> 'Royal Challengers Bangalore'
+group by win_team.team_name
+order by count(*) desc, win_team.team_name
 ;
