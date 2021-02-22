@@ -2,7 +2,7 @@
 select temp.match_id, player_name, team_name, num_wickets from 
 (
 select w.match_id, bowler, count(*) AS num_wickets
-from (select * from wicket_taken where kind_out in (1,2,4,6,7,8)) w
+from (select * from wicket_taken where kind_out in (1,2,4,6,7,8) and innings_no not in (3,4)) w
 inner join ball_by_ball using(match_id, over_id, ball_id, innings_no)
 group by w.match_id, bowler
 having count(*) >= 5
@@ -19,17 +19,16 @@ order by num_wickets desc, player_name, team_name
 --2--
 select player_name as Player_name, num_matches from
 (
-select man_of_the_match, count(*) num_matches from
-(
-select * from match
-where match_winner is not null and win_id <> 4
-) filtered_matches -- matches with clear loser
 
-inner join player_match on man_of_the_match = player_match.player_id and player_match.match_id = filtered_matches.match_id -- get me team_id of man of the match
-where team_id <> match_winner -- his team has to be losing
+select man_of_the_match, count(*) num_matches from
+match, player_match
+where match_winner is not null and win_id not in (3,4) and outcome_id not in (2,3)-- discard no_result and ties and matches with no winner
+    and man_of_the_match = player_match.player_id and player_match.match_id = match.match_id -- get me team_id of man of the match
+    and team_id <> match_winner -- his team has to be losing
 group by man_of_the_match
-) temp -- only remaining thing is to get player name
-inner join player on man_of_the_match = player.player_id -- get me man_of_the_match's name
+
+) temp, player -- only remaining thing is to get player name
+where man_of_the_match = player.player_id -- get me man_of_the_match's name
 order by num_matches desc, Player_name
 limit 3
 ;
@@ -41,6 +40,7 @@ select fielders, count(*) as catches
 from wicket_taken, match 
 where fielders is not null -- there must be a fielder 
     and kind_out = 1 -- it has to be caught out
+    and wicket_taken.innings_no not in (3,4)
     and wicket_taken.match_id = match.match_id -- join to get match date
     and extract (year from match_date) = 2012 -- ensure that it is 2012
 group by fielders -- group by player id
@@ -66,26 +66,45 @@ order by season_year
 ;
 
 --5--
+select distinct player_name from
+(
+select bb.match_id, striker, sum(runs_scored) runs
+from ball_by_ball bb, batsman_scored bs, match
+where bb.innings_no not in (3,4) -- no superovers etc.
+    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no -- inner join bb and bs
+    and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+    and match.match_id = bb.match_id -- inner join match and bb
+    and team_batting <> match_winner -- striker's team is loser in this match
+group by bb.match_id, striker
+) temp, player
+where runs>50 and player.player_id = striker
+order by player_name
+;
 
 --6--
-select season_year, team_name, num, rank from 
+select season_year, team_name, rank from
 (
-select season_id, team_name, count(*) as num, row_number() over ( partition by season_id order by count(*) desc, team_name) as rank from
+select season_year, team_name, num, row_number() over (order by num desc, team_name) as rank from
+(
+select season_id, team_id, count(*) as num from
 (
 select distinct team_id, season.season_id, player_match.player_id
-from season, match, player_match, player, batting_style
+from season, match, player_match, player, batting_style, country
 where season.season_id = match.season_id
     and match.match_id = player_match.match_id
     and player.player_id = player_match.player_id
     and batting_style.batting_id = player.batting_hand
     and batting_style.batting_hand = 'Left-hand bat'
-) temp, team
-where temp.team_id = team.team_id
-group by team_name, season_id
-) temp2, season
-where temp2.season_id = season.season_id
-    and rank <= 5
-order by season_year
+    and player.country_id = country.country_id
+    and country_name <> 'India'
+) temp
+group by team_id, season_id
+) temp2, season, team
+where temp2.team_id = team.team_id
+and temp2.season_id = season.season_id
+) temp3
+where rank <= 5
+order by season_year, team_name
 ;
 
 --7--
@@ -109,6 +128,7 @@ select team_id, player_name, sum(runs_scored) as runs, row_number() over (partit
 season, match, ball_by_ball bb, batsman_scored bs, player_match, player
 where season.season_year = 2010
     and season.season_id = match.season_id
+    and bb.innings_no not in (3,4) and bs.innings_no not in (3,4)
     and bb.match_id = match.match_id
     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
     and bb.striker = player_match.player_id and bb.match_id = player_match.match_id
@@ -121,3 +141,22 @@ order by team_name
 ;
 
 --9--
+select t1.team_name, t2.team_name as opponent_team_name, number_of_sixes from
+(
+select team_batting, team_bowling, count(*) as number_of_sixes
+from season, match, ball_by_ball bb, batsman_scored bs
+where season_year = 2008
+    and season.season_id = match.season_id --combine season and match (one-many)
+    and match.match_id = bb.match_id -- combine match and bb (one-many)
+    and bb.innings_no not in (3,4) --remove superovers, etc.
+    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no -- inner join bb and bs
+    and bs.runs_scored = 6 -- only sixes
+group by bb.match_id, bb.innings_no, team_batting, team_bowling
+) temp, team t1, team t2
+where t1.team_id = team_batting
+    and t2.team_id = team_bowling
+order by number_of_sixes desc, t1.team_name, t2.team_name
+limit 3
+;
+
+--10--
