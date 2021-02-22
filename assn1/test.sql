@@ -193,3 +193,18 @@
 -- order by num_wickets desc, player_name, match_id
 
 --13--
+select player_name from
+(
+select player_id from
+(
+select distinct player_id, season_id
+from player_match, match
+where player_match.match_id = match.match_id
+-- group by player_id
+order by player_id, season_id
+) temp -- in each season, which players played
+group by player_id
+having count(*) = (select count(*) from season) -- gives me 9 = total no. of seasons
+) temp2, player
+where temp2.player_id = player.player_id
+order by player_name
