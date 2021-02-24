@@ -234,6 +234,8 @@ where temp2.player_id = player.player_id
 order by player_name
 ;
 
+--14--
+
 --15--
 select season_year, runs_per_season.player_name as top_batsman, runs as max_runs, wickets_per_season.player_name as top_bowler, wickets as max_wickets from
 (select * from
@@ -328,8 +330,25 @@ where player.player_id = bowler
 order by num desc, player_name
 limit 5
 ;
---19--
 
+--19--
+select team_name, avg_runs from
+(select team_batting, ROUND(AVG(match_runs), 2) avg_runs from
+(
+select match.match_id, team_batting, SUM(runs_scored) match_runs
+from season, match, ball_by_ball bb, batsman_scored bs
+where season.season_year = 2010
+    and bb.innings_no not in (3,4)
+    and season.season_id = match.season_id
+    and match.match_id = bb.match_id
+    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+group by match.match_id, team_batting
+) temp
+group by team_batting
+) temp2, team
+where team.team_id = team_batting
+order by team_name
+;
 
 --20--
 select player_name as player_names from
@@ -363,3 +382,5 @@ where temp.match_id = match.match_id
 order by num, match_winner_name, team_1_name, team_2_name
 limit 3
 ;
+
+--22--

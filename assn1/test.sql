@@ -332,27 +332,40 @@
 -- ;
 
 --21--
-select temp.match_id, t1.team_name as team_1_name, t2.team_name as team_2_name, win_team.team_name as match_winner_name, num as number_of_boundaries from
+-- select temp.match_id, t1.team_name as team_1_name, t2.team_name as team_2_name, win_team.team_name as match_winner_name, num as number_of_boundaries from
+-- (
+-- select match.match_id, count(*) num
+-- from match, ball_by_ball bb, batsman_scored bs
+-- where bb.innings_no = 2
+--     and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+--     and bs.runs_scored in (4,6) -- only boundaries
+--     and match.match_id = bb.match_id -- join match, bb
+--     and bb.team_batting = match.match_winner -- match winner must have been batting in the second innings to get boundaries
+--     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no -- join bb, bs
+-- group by match.match_id
+-- ) temp, match, team t1, team t2, team win_team
+-- where temp.match_id = match.match_id
+--     and match.team_1 = t1.team_id
+--     and match.team_2 = t2.team_id
+--     and match.match_winner = win_team.team_id
+-- order by num, match_winner_name, team_1_name, team_2_name
+-- limit 3;
+
+--19--
+select team_name, avg_runs from
+(select team_batting, ROUND(AVG(match_runs), 2) avg_runs from
 (
-select match.match_id, count(*) num
-from match, ball_by_ball bb, batsman_scored bs
-where bb.innings_no = 2
-    and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
-    and bs.runs_scored in (4,6) -- only boundaries
-    and match.match_id = bb.match_id -- join match, bb
-    and bb.team_batting = match.match_winner -- match winner must have been batting in the second innings to get boundaries
-    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no -- join bb, bs
-group by match.match_id
-) temp, match, team t1, team t2, team win_team
-where temp.match_id = match.match_id
-    and match.team_1 = t1.team_id
-    and match.team_2 = t2.team_id
-    and match.match_winner = win_team.team_id
-order by num, match_winner_name, team_1_name, team_2_name
-limit 3;
-
-
-
-
-
+select match.match_id, team_batting, SUM(runs_scored) match_runs
+from season, match, ball_by_ball bb, batsman_scored bs
+where season.season_year = 2010
+    and bb.innings_no not in (3,4)
+    and season.season_id = match.season_id
+    and match.match_id = bb.match_id
+    and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+group by match.match_id, team_batting
+) temp
+group by team_batting
+) temp2, team
+where team.team_id = team_batting
+order by team_name
 
