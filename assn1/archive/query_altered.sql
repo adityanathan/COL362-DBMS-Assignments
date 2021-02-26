@@ -33,7 +33,7 @@ order by num_matches desc, player_name
 limit 3
 ;
 
---3--
+-- 3--
 select player_name from
 (
 select fielders, count(*) as catches
@@ -205,8 +205,8 @@ order by bowling_style.bowling_skill
 
 --11--
 select season_year, player_name, season_wickets as num_wickets, season_runs as runs from
-
-(select player.player_id, match.season_id, count(*) matches_played -- left handed batsman with num_matches played in a season
+-- left handed batsman with num_matches played in a season
+(select player.player_id, match.season_id, count(*) matches_played
 from player, player_match, match, batting_style
 where player.player_id = player_match.player_id
     and match.match_id = player_match.match_id
@@ -214,14 +214,16 @@ where player.player_id = player_match.player_id
     and batting_style.batting_hand = 'Left-hand bat'
 group by player.player_id, match.season_id) matches,
 
-(select striker, season_id, sum(runs_scored) as season_runs -- total runs per season for each player
+-- total runs per season for each player
+(select striker, season_id, sum(runs_scored) as season_runs
 from match, ball_by_ball bb, batsman_scored bs
 where bb.innings_no not in (3,4) -- no superovers etc.
     and bb.match_id = bs.match_id and bb.innings_no = bs.innings_no and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id -- join bs and bb
     and match.match_id = bb.match_id -- join match and bb - for season_id
 group by season_id, striker) runs,
 
-(select bowler, season_id, count(*) as season_wickets -- total wickets taken per season for each bowler (need to consider only bowler)
+-- total wickets taken per season for each bowler (need to consider only bowler)
+(select bowler, season_id, count(*) as season_wickets
 from match, ball_by_ball bb, wicket_taken bs, out_type
 where bb.innings_no not in (3,4) -- no superovers etc.
     and bb.match_id = bs.match_id and bb.innings_no = bs.innings_no and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id -- join bs and bb
@@ -230,6 +232,7 @@ where bb.innings_no not in (3,4) -- no superovers etc.
 group by season_id, bowler) wickets,
 player, season
 
+-- now do inner join of the three tables
 where matches.player_id = runs.striker and runs.striker = wickets.bowler and wickets.bowler = player.player_id
     and matches.season_id = runs.season_id and runs.season_id = wickets.season_id and wickets.season_id = season.season_id -- join all three tables + player, season for meta information
     and season_runs >= 150
@@ -255,7 +258,7 @@ where bowler = player.player_id
 order by num_wickets desc, player_name, match_id
 limit 1;
 
---13--
+-- 13--
 select player_name from
 (
 select player_id from
@@ -370,14 +373,17 @@ select player_name from
 (
 select bowler, count(*) as num from
 
-(select player_id, count(team_id) from --players who have played in 3 or more teams
+--players who have played in 3 or more teams
+(select player_id, count(team_id) from
 (select distinct player_id, team_id from player_match) temp
 group by player_id
 having count(team_id) >= 3) filter_teams,
 
-(select bs.match_id, bs.over_id, bowler, sum(runs_scored) --players who have conceded more than 20 runs in an over in a match
+--players who have conceded more than 20 runs in an over in a match
+(select bs.match_id, bs.over_id, bowler, sum(runs_scored)
 from ball_by_ball bb, batsman_scored bs
 where bs.match_id = bb.match_id and bs.over_id = bb.over_id and bs.ball_id = bb.ball_id and bs.innings_no = bb.innings_no -- join bb with bs
+    -- and bb.innings_no not in (3,4) -- no superovers, etc.
 group by bs.match_id, bs.over_id, bowler
 having sum(runs_scored) > 20) filter_concede
 
@@ -443,14 +449,15 @@ limit 3
 
 --22--
 select country.country_name from
-
-(select bowler, sum(runs_scored) total_runs_conceded --overall runs conceded by bowler
+--overall runs conceded by bowler
+(select bowler, sum(runs_scored) total_runs_conceded
 from ball_by_ball bb, batsman_scored bs
 where bb.innings_no not in (3,4) -- no superovers etc.
     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
 group by bowler) runs_conceded,
 
-(select bowler, count(*) total_wickets --overall wickets taken by bowler
+--overall wickets taken by bowler
+(select bowler, count(*) total_wickets
 from ball_by_ball bb, wicket_taken ws, out_type
 where bb.innings_no not in (3,4) -- no superovers etc.
     and out_name not in ('run out', 'retired hurt', 'obstructing the field') and out_type.out_id = ws.kind_out -- bowler took wicket
