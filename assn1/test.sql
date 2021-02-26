@@ -31,7 +31,7 @@
 --6--
 -- select season_year, team_name, rank from
 -- (
--- select season_year, team_name, num, row_number() over (order by num desc, team_name) as rank from
+-- select season_year, team_name, num, row_number() over (partition by temp2.season_id order by num desc, team_name) as rank from
 -- (
 -- select season_id, team_id, count(*) as num from
 -- (
@@ -44,14 +44,14 @@
 --     and batting_style.batting_hand = 'Left-hand bat'
 --     and player.country_id = country.country_id
 --     and country_name <> 'India'
--- ) temp
+-- ) temp -- Left handed foreign batsman per team per season
 -- group by team_id, season_id
 -- ) temp2, season, team
 -- where temp2.team_id = team.team_id
 -- and temp2.season_id = season.season_id
 -- ) temp3
 -- where rank <= 5
--- order by season_year, team_name
+-- order by season_year, rank
 
 --7--
 -- select team_name from
@@ -90,7 +90,7 @@
 -- from ball_by_ball bb, batsman_scored bs, match
 -- where bb.innings_no not in (3,4) -- no superovers etc.
 --     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no -- inner join bb and bs
---     and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+--     and match.match_winner is not null -- filter matches s.t there is clear loser in match
 --     and match.match_id = bb.match_id -- inner join match and bb
 --     and team_batting <> match_winner -- striker's team is loser in this match
 -- group by bb.match_id, striker
@@ -122,7 +122,7 @@
 
 -- select man_of_the_match, count(*) num_matches from
 -- match, player_match
--- where match_winner is not null and win_id not in (3,4) and outcome_id not in (2,3)-- discard no_result and ties and matches with no winner
+-- where match_winner is not null -- discard no_result and ties and matches with no winner
 --     and man_of_the_match = player_match.player_id and player_match.match_id = match.match_id -- get me team_id of man of the match
 --     and team_id <> match_winner -- his team has to be losing
 -- group by man_of_the_match
@@ -270,7 +270,7 @@
 -- select win_team.team_name
 -- from season, match, team t1, team t2, team win_team
 -- where season_year = 2008
---     and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+--     and match.match_winner is not null -- filter matches s.t there is clear loser in match
 --     and season.season_id = match.season_id
 --     and match.team_1 = t1.team_id and match.team_2 = t2.team_id and match.match_winner = win_team.team_id
 --     and (t1.team_name = 'Royal Challengers Bangalore' or t2.team_name = 'Royal Challengers Bangalore')
@@ -337,7 +337,7 @@
 -- select match.match_id, count(*) num
 -- from match, ball_by_ball bb, batsman_scored bs
 -- where bb.innings_no = 2
---     and match.match_winner is not null and match.win_id not in (3,4) and match.outcome_id not in (2,3) -- filter matches s.t there is clear loser in match
+--     and match.match_winner is not null -- filter matches s.t there is clear loser in match
 --     and bs.runs_scored in (4,6) -- only boundaries
 --     and match.match_id = bb.match_id -- join match, bb
 --     and bb.team_batting = match.match_winner -- match winner must have been batting in the second innings to get boundaries
@@ -352,20 +352,133 @@
 -- limit 3;
 
 --19--
-select team_name, avg_runs from
-(select team_batting, ROUND(AVG(match_runs), 2) avg_runs from
+-- select team_name, avg_runs from
+-- (select team_batting, ROUND(AVG(match_runs), 2) avg_runs from
+-- (
+-- select match.match_id, team_batting, SUM(runs_scored) match_runs
+-- from season, match, ball_by_ball bb, batsman_scored bs
+-- where season.season_year = 2010
+--     and bb.innings_no not in (3,4)
+--     and season.season_id = match.season_id
+--     and match.match_id = bb.match_id
+--     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+-- group by match.match_id, team_batting
+-- ) temp
+-- group by team_batting
+-- ) temp2, team
+-- where team.team_id = team_batting
+-- order by team_name
+
+--10--
+-- select bowling_style.bowling_skill bowling_category, player_name, batting_average from
+-- (
+-- select bowling_skill, player_name, ROUND(total_runs/num_matches,2) batting_average, row_number() over (partition by bowling_skill order by ROUND(total_runs/num_matches,2) desc, player_name) rank from
+
+-- (select ROUND(AVG(overall_wickets), 2) avg_b from
+-- (
+-- select bowler, count(*) overall_wickets
+-- from ball_by_ball bb, wicket_taken ws, out_type
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and out_name not in ('run out', 'retired hurt', 'obstructing the field') and out_type.out_id = ws.kind_out -- bowler took wicket
+--     -- and ws.kind_out in (1,2,4,6,7,8)
+--     and bb.match_id = ws.match_id and bb.over_id = ws.over_id and bb.ball_id = ws.ball_id and bb.innings_no = ws.innings_no -- join bb and ws
+-- group by bowler
+-- having count(*) <> 0
+-- ) temp) avg_bowler,
+
+-- (select bowler, count(*) overall_wickets
+-- from ball_by_ball bb, wicket_taken ws, out_type
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and out_name not in ('run out', 'retired hurt', 'obstructing the field') and out_type.out_id = ws.kind_out -- bowler took wicket
+--     -- and ws.kind_out in (1,2,4,6,7,8)
+--     and bb.match_id = ws.match_id and bb.over_id = ws.over_id and bb.ball_id = ws.ball_id and bb.innings_no = ws.innings_no -- join bb and ws
+-- group by bowler
+-- having count(*) <> 0) bowler_wickets,
+
+-- (select striker, count(match_id) num_matches from
+-- (
+-- select distinct striker, match_id
+-- from ball_by_ball bb
+-- ) temp
+-- group by striker) matches_played,
+
+-- (select striker, sum(runs_scored) total_runs
+-- from ball_by_ball bb, batsman_scored bs
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+-- group by striker) overall_runs, player
+
+-- where matches_played.striker = overall_runs.striker and overall_runs.striker = bowler and bowler = player.player_id
+--     and overall_wickets > avg_b
+-- ) temp5, bowling_style
+-- where rank = 1
+--     and bowling_style.bowling_id = temp5.bowling_skill
+-- order by bowling_style.bowling_skill
+
+--22--
+-- select country.country_name from
+-- --overall runs conceded by bowler
+-- (select bowler, sum(runs_scored) total_runs_conceded
+-- from ball_by_ball bb, batsman_scored bs
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
+-- group by bowler) runs_conceded,
+
+-- --overall wickets taken by bowler
+-- (select bowler, count(*) total_wickets
+-- from ball_by_ball bb, wicket_taken ws, out_type
+-- where bb.innings_no not in (3,4) -- no superovers etc.
+--     and out_name not in ('run out', 'retired hurt', 'obstructing the field') and out_type.out_id = ws.kind_out -- bowler took wicket
+--     and bb.match_id = ws.match_id and bb.over_id = ws.over_id and bb.ball_id = ws.ball_id and bb.innings_no = ws.innings_no
+-- group by bowler
+-- having count(*) <> 0) overall_wickets, player, country
+
+-- where runs_conceded.bowler = overall_wickets.bowler and overall_wickets.bowler = player.player_id
+--     and country.country_id = player.country_id
+-- order by ROUND(total_runs_conceded/total_wickets,2), player_name
+-- limit 3;
+
+--14--
+select season_year, match_id, team_name from
 (
-select match.match_id, team_batting, SUM(runs_scored) match_runs
-from season, match, ball_by_ball bb, batsman_scored bs
-where season.season_year = 2010
-    and bb.innings_no not in (3,4)
-    and season.season_id = match.season_id
-    and match.match_id = bb.match_id
+select season_year, match_id, team_name, num, row_number() over (partition by season.season_id order by num desc, team_name, match_id) rank from
+(
+select season_id, match_id, team_batting, count(*) num from
+(
+select season_id, bb.match_id, team_batting, striker, sum(runs_scored)
+from ball_by_ball bb, batsman_scored bs, match
+where bb.innings_no not in (3,4)
+    and match_winner is not null
     and bb.match_id = bs.match_id and bb.over_id = bs.over_id and bb.ball_id = bs.ball_id and bb.innings_no = bs.innings_no
-group by match.match_id, team_batting
+    and match.match_id = bb.match_id
+    and match_winner = team_batting -- striker's team must have won the match
+group by season_id, bb.match_id, team_batting, striker
+having sum(runs_scored) >= 50
 ) temp
-group by team_batting
-) temp2, team
+group by season_id, match_id, team_batting
+) temp2, team, season
 where team.team_id = team_batting
-order by team_name
+    and season.season_id = temp2.season_id
+) temp3
+where rank in (1,2,3)
+order by season_year, rank
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
