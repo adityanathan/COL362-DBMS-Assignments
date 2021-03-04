@@ -118,3 +118,30 @@ where po.airportid = path.originairportid and pd.airportid = path.destairportid
     and po.city = pd.city
 ) temp
 ;
+
+--6--
+with recursive path(originairportid, destairportid, city_path) as (
+
+    select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+    from flights, airports a1, airports a2
+    where a1.airportid = originairportid and a2.airportid = destairportid
+        and a1.state <> a2.state -- only interstate flights
+
+    union
+
+    select path.originairportid, flights.destairportid, city_path || fd.city
+    from flights, path, airports po, airports fd
+    where path.destairportid = flights.originairportid -- link
+        and flights.destairportid = fd.airportid and path.originairportid = po.airportid
+        and (not fd.city = ANY(city_path)) -- ensure simple path
+        and po.city = 'Albuquerque' -- for efficiency
+)
+select count(*) count -- number of paths between chicago and albuquerque through interstate flights
+from path, airports po, airports pd
+where path.originairportid = po.airportid and path.destairportid = pd.airportid
+    and po.city = 'Albuquerque' 
+    and pd.city = 'Chicago'
+group by po.city, pd.city
+;
+
+--7--

@@ -25,6 +25,25 @@
 -- SELECT * FROM search_graph;
 
 ---------------------------------------------------------------------
+--PREAMBLE--
+create view simple_paths as
+    with recursive path(originairportid, destairportid, city_path) as (
+
+    select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+    from flights, airports a1, airports a2
+    where a1.airportid = originairportid and a2.airportid = destairportid -- for getting the cities
+
+    union
+
+    select path.originairportid, flights.destairportid, city_path || fd.city
+    from flights, path, airports po, airports fd
+    where path.destairportid = flights.originairportid -- link for increasing hops
+        and flights.destairportid = fd.airportid and path.originairportid = po.airportid -- fdcity and pocity
+        and (not fd.city = ANY(city_path)) -- ensure simple path
+        and po.city = 'Albuquerque' -- for efficiency (path has to start from albuquerqe otherwise no point in expanding it)
+    )
+    select * from path
+;
 
 --1--
 -- WITH RECURSIVE
@@ -122,27 +141,88 @@
 -- ;
 
 --5--
-select coalesce(max(length),0) length from
-(
-with recursive path(originairportid, destairportid, city_path) as (
+-- select coalesce(max(length),0) length from
+-- (
+-- with recursive path(originairportid, destairportid, city_path) as (
 
-    select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
-    from flights, airports a1, airports a2
-    where a1.airportid = originairportid and a2.airportid = destairportid
+--     select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+--     from flights, airports a1, airports a2
+--     where a1.airportid = originairportid and a2.airportid = destairportid
 
-    union
+--     union
 
-    select path.originairportid, flights.destairportid, city_path || fd.city
-    from flights, path, airports po, airports pd, airports fo, airports fd
-    where 
-        path.originairportid = po.airportid and path.destairportid = pd.airportid and flights.originairportid = fo.airportid and flights.destairportid = fd.airportid
-        and path.destairportid = flights.originairportid -- link
-        and po.city <> pd.city -- cannot extend once origin = dest in path i.e [A,...,A]
-        and ((not fd.city = ANY(city_path)) or fd.city = po.city) -- either ensure simple path or round trip is complete
-)
-select po.city, pd.city, city_path, array_length(city_path, 1) - 1 length
-from path, airports po, airports pd
-where po.airportid = path.originairportid and pd.airportid = path.destairportid
-    and po.city = pd.city
-) temp
+--     select path.originairportid, flights.destairportid, city_path || fd.city
+--     from flights, path, airports po, airports pd, airports fo, airports fd
+--     where 
+--         and path.destairportid = flights.originairportid -- link
+--         path.originairportid = po.airportid and path.destairportid = pd.airportid and flights.originairportid = fo.airportid and flights.destairportid = fd.airportid
+--         and po.city <> pd.city -- cannot extend once origin = dest in path i.e [A,...,A]
+--         and ((not fd.city = ANY(city_path)) or fd.city = po.city) -- either ensure simple path or round trip is complete
+-- )
+-- select po.city, pd.city, city_path, array_length(city_path, 1) - 1 length
+-- from path, airports po, airports pd
+-- where po.airportid = path.originairportid and pd.airportid = path.destairportid
+--     and po.city = pd.city
+-- ) temp
+-- ;
+
+--6--
+-- with recursive path(originairportid, destairportid, city_path) as (
+
+--     select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+--     from flights, airports a1, airports a2
+--     where a1.airportid = originairportid and a2.airportid = destairportid
+--         and a1.state <> a2.state -- only interstate flights
+
+--     union
+
+--     select path.originairportid, flights.destairportid, city_path || fd.city
+--     from flights, path, airports po, airports fd
+--     where path.destairportid = flights.originairportid -- link
+--         and flights.destairportid = fd.airportid and path.originairportid = po.airportid
+--         and (not fd.city = ANY(city_path)) -- ensure simple path
+--         and po.city = 'Albuquerque' -- for efficiency
+-- )
+-- select count(*) count -- number of paths between chicago and albuquerque through interstate flights
+-- from path, airports po, airports pd
+-- where path.originairportid = po.airportid and path.destairportid = pd.airportid
+--     and po.city = 'Albuquerque' 
+--     and pd.city = 'Chicago'
+-- group by po.city, pd.city
+-- ;
+
+--7--
+-- with recursive path(originairportid, destairportid, city_path) as (
+
+--     select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+--     from flights, airports a1, airports a2
+--     where a1.airportid = originairportid and a2.airportid = destairportid -- for getting the cities
+
+--     union
+
+--     select path.originairportid, flights.destairportid, city_path || fd.city
+--     from flights, path, airports po, airports fd
+--     where path.destairportid = flights.originairportid -- link for increasing hops
+--         and flights.destairportid = fd.airportid and path.originairportid = po.airportid -- fdcity and pocity
+--         and (not fd.city = ANY(city_path)) -- ensure simple path
+--         and po.city = 'Albuquerque' -- for efficiency (path has to start from albuquerqe otherwise no point in expanding it)
+-- )
+-- select po.city, pd.city, city_path
+-- from path, airports po, airports pd
+-- where path.originairportid = po.airportid and path.destairportid = pd.airportid
+--     and po.city = 'Albuquerque'
+--     and pd.city = 'Chicago'
+--     and 'Washington' = ANY(city_path)
+
+-----------------------------------------------------------------------------
+
+select po.city, pd.city, city_path
+from simple_paths, airports po, airports pd
+where simple_paths.originairportid = po.airportid and simple_paths.destairportid = pd.airportid
+    and po.city = 'Albuquerque'
+    -- and pd.city = 'Chicago'
+    and 'Washington' = ANY(city_path)
 ;
+
+--8--
+
