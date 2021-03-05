@@ -183,6 +183,63 @@ having count(author_path) <> 0
 ;
 
 --19--
+with recursive path(authorid1, authorid2, author_path, city_list, paper_list, cite_list) as (
+
+        select distinct authorid1, authorid2, 
+            array[authorid1, authorid2] author_path, 
+            array[a1.city, a2.city] city_list,
+            (select array(select distinct a from unnest( -- to remove duplicates
+                array(select paperid from authorpaperlist ap where ap.authorid = authorid1) 
+                    || array(select paperid from authorpaperlist ap where ap.authorid = authorid2)
+            ) as a)) as paper_list,
+            (select array(select distinct a from unnest( -- to remove duplicates
+                array(select paperid2 from authorpaperlist ap, citationlist cl where authorid1 = ap.authorid and ap.paperid = cl.paperid1) 
+                    || array(select paperid from authorpaperlist ap, citationlist cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1)
+            ) as a)) as cite_list
+
+        from author_edges, authordetails a1, authordetails a2
+            where authorid1 = a1.authorid and authorid2 = a2.authorid
+        
+        union
+
+        select path.authorid1, ae.authorid2, 
+            author_path || ae.authorid2,
+            city_list || ad.city,
+            (select array(select distinct a from unnest( -- to remove duplicates
+                paper_list || array(select paperid from authorpaperlist ap where ap.authorid = ae.authorid2)
+            ) as a)),
+            (select array(select distinct a from unnest( -- to remove duplicates
+                cite_list || array(select paperid2 from authorpaperlist ap, citationlist cl where ae.authorid2 = ap.authorid and ap.paperid = cl.paperid1)
+            ) as a))
+
+        from path, author_edges ae, authordetails ad
+        where path.authorid2 = ae.authorid1 -- recursion link
+            and (not ae.authorid2 = ANY(author_path)) -- simple path
+            and ae.authorid2 = ad.authorid
+            and 
+            ((ae.authorid2 = 321) or -- exclude first and last guy
+            (
+                (not ad.city = ANY(city_list)) -- this author is not in the same city as any previous author
+                and not exists(
+                    select ap.paperid from authorpaperlist ap 
+                    where ap.authorid = ae.authorid2
+                        and (not ap.paperid = ANY(cite_list)) -- this author's papers haven't been cited by previous authors on the path
+                )
+                and not exists(
+                    select cl.paperid2 from authorpaperlist ap, citationlist cl 
+                    where ae.authorid2 = ap.authorid and ap.paperid = cl.paperid1
+                        and (not cl.paperid2 = ANY(paper_list)) -- this author hasn't cited any previous author's papers
+                )
+            )
+            )
+)
+select coalesce((
+select count(author_path)
+from path
+where authorid1 = 3552 and authorid2 = 321
+having count(author_path) <> 0
+), -1) count
+;
 
 --CLEANUP--
 drop view if exists authorpaper_edges cascade;
