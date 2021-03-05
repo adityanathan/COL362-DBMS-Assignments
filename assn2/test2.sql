@@ -219,7 +219,7 @@ create view conference_connected_components as -- fields = (conferencename, comp
 --             and authorid = ANY(author_path)
 --     )
 -- )) count
-;
+-- ;
 
 --19--
 -- with recursive path(authorid1, authorid2, author_path, city_list, paper_list, cite_list) as (
@@ -334,6 +334,31 @@ create view conference_connected_components as -- fields = (conferencename, comp
 -- from conference_connected_components
 -- order by count, conferencename
 -- ;
+
+--13--
+select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 1558 and authorid2 = 2826)),
+(select count(*) from
+(
+with recursive path(authorid1, authorid2, author_path) as (
+    select authorid1, authorid2, array[authorid1, authorid2] -- path grows to the right 
+    from author_edges
+
+    union
+
+    select path.authorid1, ae.authorid2, author_path || ae.authorid2
+    from author_edges ae, path, authordetails ad1, authordetails ad2
+    where path.authorid2 = ae.authorid1 -- recursion link
+        and (not ae.authorid2 = ANY(author_path)) -- simple path
+        and ae.authorid1 = ad1.authorid and ae.authorid2 = ad2.authorid
+        and ad1.age > 35
+        and ((ad2.authorid = 2826) or (ad2.age > 35 and ad1.gender <> ad2.gender))
+)
+select *
+from path
+where authorid1 = 1558 and authorid2 = 2826
+) temp)) count
+;
+
 
 --CLEANUP--
 drop view if exists authorpaper_edges cascade;
