@@ -52,6 +52,43 @@ create view citations_per_author as
     group by ap.authorid
 ;
 
+create view authorconf_edges as
+    select distinct a.authorid authorid1, b.authorid authorid2, paperdetails.conferencename
+    from authorpaperlist a, authorpaperlist b, paperdetails
+    where a.paperid = b.paperid
+        and a.authorid <> b.authorid -- avoid self loops
+        and a.paperid = paperdetails.paperid
+;
+
+create view conference_connected_components as -- fields = (conferencename, component)
+    with recursive path(authorid1, authorid2, conferencename) as (
+        select authorid1, authorid2, conferencename
+        from authorconf_edges
+
+        union
+
+        select path.authorid1, ace.authorid2, path.conferencename
+        from path, authorconf_edges ace
+        where path.authorid2 = ace.authorid1 -- recursion link
+            and path.authorid1 <> ace.authorid2 -- self loops not allowed
+            and path.conferencename = ace.conferencename
+    ) -- edges of conference connected graph
+
+    select distinct temp2.conferencename, coalesce(temp1.component, temp2.component) component from 
+        (select authorid1, conferencename, 
+            (select array(select distinct a from unnest(authorid1 || array_agg(authorid2)) as a order by a)) component
+        from path
+        group by authorid1, conferencename) temp1 -- connected components of size > 1
+
+    right join -- gives me connected components of size 1
+
+        (select a.authorid, pd.conferencename, array[a.authorid] component
+        from authorpaperlist a, paperdetails pd
+        where a.paperid = pd.paperid) temp2
+
+    on temp1.authorid1 = temp2.authorid and temp1.conferencename = temp2.conferencename
+;
+
 -- select authorid1, authorid2, author_path, array_length(author_path,1)-1 length
 -- from simple_author_paths p;
 
@@ -103,6 +140,23 @@ create view citations_per_author as
 -- ;
 
 --14--
+-- select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 704 and authorid2 = 102)),
+-- (select count(author_path) count
+-- from simple_author_paths
+-- where authorid1 = 704 and authorid2 = 102
+--     and exists(
+--         select * from
+--         (
+--             select distinct ap.authorid
+--             from paper_citations pp, authorpaperlist ap
+--             where ap.paperid = pp.paperid1
+--                 and pp.paperid2 = 126 -- gives me all the authors who directly or indirectly cited this paper
+--         ) temp
+--         where temp.authorid = ANY(author_path[2:array_length(author_path,1)-1]) -- omit A and B
+--     )
+-- )) count
+-- ;
+
 -- select coalesce((
 -- select count(author_path) count
 -- from simple_author_paths
@@ -224,15 +278,9 @@ create view citations_per_author as
 
 --         select distinct authorid1, authorid2, 
 --             array[authorid1, authorid2] author_path, 
---             array[a1.city, a2.city] city_list,
---             (select array(select distinct a from unnest( -- to remove duplicates
---                 array(select paperid from authorpaperlist ap where ap.authorid = authorid1) 
---                     || array(select paperid from authorpaperlist ap where ap.authorid = authorid2)
---             ) as a)) as paper_list,
---             (select array(select distinct a from unnest( -- to remove duplicates
---                 array(select paperid2 from authorpaperlist ap, citationlist cl where authorid1 = ap.authorid and ap.paperid = cl.paperid1) 
---                     || array(select paperid from authorpaperlist ap, citationlist cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1)
---             ) as a)) as cite_list
+--             array[a2.city] city_list,
+--             array(select paperid from authorpaperlist ap where ap.authorid = authorid2) as paper_list,
+--             array(select paperid from authorpaperlist ap, citationlist cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1) as cite_list
 
 --         from author_edges, authordetails a1, authordetails a2
 --             where authorid1 = a1.authorid and authorid2 = a2.authorid
@@ -286,14 +334,8 @@ create view citations_per_author as
 
 --         select distinct authorid1, authorid2, 
 --             array[authorid1, authorid2] author_path, 
---             (select array(select distinct a from unnest( -- to remove duplicates
---                 array(select paperid from authorpaperlist ap where ap.authorid = authorid1) 
---                     || array(select paperid from authorpaperlist ap where ap.authorid = authorid2)
---             ) as a)) as paper_list,
---             (select array(select distinct a from unnest( -- to remove duplicates
---                 array(select paperid2 from authorpaperlist ap, paper_citations cl where authorid1 = ap.authorid and ap.paperid = cl.paperid1) 
---                     || array(select paperid from authorpaperlist ap, paper_citations cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1)
---             ) as a)) as cite_list
+--             array(select paperid from authorpaperlist ap where ap.authorid = authorid2) as paper_list,
+--             array(select paperid from authorpaperlist ap, paper_citations cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1) as cite_list
 
 --         from author_edges, authordetails a1, authordetails a2
 --             where authorid1 = a1.authorid and authorid2 = a2.authorid
@@ -335,6 +377,19 @@ create view citations_per_author as
 -- where authorid1 = 3552 and authorid2 = 321
 -- having count(author_path) <> 0
 -- ), -1) count
+-- ;
+
+--21--
+select conferencename, count(component) count
+from conference_connected_components
+group by conferencename
+order by count desc, conferencename
+;
+
+--22--
+select conferencename, array_length(component,1) count
+from conference_connected_components
+order by count, conferencename
 ;
 
 --CLEANUP--
@@ -343,3 +398,4 @@ drop view if exists author_edges cascade;
 -- drop view if exists simple_author_paths;
 drop view if exists paper_citations cascade;
 -- drop view if exists citations_per_author;
+drop view if exists authorconf_edges cascade;

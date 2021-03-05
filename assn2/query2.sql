@@ -52,6 +52,42 @@ create view citations_per_author as
     group by ap.authorid
 ;
 
+create view authorconf_edges as
+    select distinct a.authorid authorid1, b.authorid authorid2, paperdetails.conferencename
+    from authorpaperlist a, authorpaperlist b, paperdetails
+    where a.paperid = b.paperid
+        and a.authorid <> b.authorid -- avoid self loops
+        and a.paperid = paperdetails.paperid
+;
+
+create view conference_connected_components as -- fields = (conferencename, component)
+    with recursive path(authorid1, authorid2, conferencename) as (
+        select authorid1, authorid2, conferencename
+        from authorconf_edges
+
+        union
+
+        select path.authorid1, ace.authorid2, path.conferencename
+        from path, authorconf_edges ace
+        where path.authorid2 = ace.authorid1 -- recursion link
+            and path.authorid1 <> ace.authorid2 -- self loops not allowed
+            and path.conferencename = ace.conferencename
+    ) -- edges of conference connected graph
+
+    select distinct temp2.conferencename, coalesce(temp1.component, temp2.component) component from 
+        (select authorid1, conferencename, 
+            (select array(select distinct a from unnest(authorid1 || array_agg(authorid2)) as a order by a)) component
+        from path
+        group by authorid1, conferencename) temp1 -- connected components of size > 1
+
+    right join -- gives me connected components of size 1
+
+        (select a.authorid, pd.conferencename, array[a.authorid] component
+        from authorpaperlist a, paperdetails pd
+        where a.paperid = pd.paperid) temp2
+
+    on temp1.authorid1 = temp2.authorid and temp1.conferencename = temp2.conferencename
+;
 
 --12--
 select a3.authorid, coalesce(length,-1) length from
@@ -187,15 +223,9 @@ with recursive path(authorid1, authorid2, author_path, city_list, paper_list, ci
 
         select distinct authorid1, authorid2, 
             array[authorid1, authorid2] author_path, 
-            array[a1.city, a2.city] city_list,
-            (select array(select distinct a from unnest( -- to remove duplicates
-                array(select paperid from authorpaperlist ap where ap.authorid = authorid1) 
-                    || array(select paperid from authorpaperlist ap where ap.authorid = authorid2)
-            ) as a)) as paper_list,
-            (select array(select distinct a from unnest( -- to remove duplicates
-                array(select paperid2 from authorpaperlist ap, citationlist cl where authorid1 = ap.authorid and ap.paperid = cl.paperid1) 
-                    || array(select paperid from authorpaperlist ap, citationlist cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1)
-            ) as a)) as cite_list
+            array[a2.city] city_list,
+            array(select paperid from authorpaperlist ap where ap.authorid = authorid2) as paper_list, -- don't consider first guy
+            array(select paperid from authorpaperlist ap, citationlist cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1) as cite_list -- don't consider first guy
 
         from author_edges, authordetails a1, authordetails a2
             where authorid1 = a1.authorid and authorid2 = a2.authorid
@@ -241,9 +271,73 @@ having count(author_path) <> 0
 ), -1) count
 ;
 
+--20--
+with recursive path(authorid1, authorid2, author_path, paper_list, cite_list) as (
+
+        select distinct authorid1, authorid2, 
+            array[authorid1, authorid2] author_path, 
+            array(select paperid from authorpaperlist ap where ap.authorid = authorid2) as paper_list, -- don't consider first guy
+            array(select paperid from authorpaperlist ap, paper_citations cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1) as cite_list -- don't consider first guy
+
+        from author_edges, authordetails a1, authordetails a2
+            where authorid1 = a1.authorid and authorid2 = a2.authorid
+        
+        union
+
+        select path.authorid1, ae.authorid2, 
+            author_path || ae.authorid2,
+            (select array(select distinct a from unnest( -- to remove duplicates
+                paper_list || array(select paperid from authorpaperlist ap where ap.authorid = ae.authorid2)
+            ) as a)),
+            (select array(select distinct a from unnest( -- to remove duplicates
+                cite_list || array(select paperid2 from authorpaperlist ap, paper_citations cl where ae.authorid2 = ap.authorid and ap.paperid = cl.paperid1)
+            ) as a))
+
+        from path, author_edges ae, authordetails ad
+        where path.authorid2 = ae.authorid1 -- recursion link
+            and (not ae.authorid2 = ANY(author_path)) -- simple path
+            and ae.authorid2 = ad.authorid
+            and 
+            ((ae.authorid2 = 321) or -- exclude first and last guy
+            (
+                not exists(
+                    select ap.paperid from authorpaperlist ap 
+                    where ap.authorid = ae.authorid2
+                        and (not ap.paperid = ANY(cite_list)) -- this author's papers haven't been cited by previous authors on the path
+                )
+                and not exists(
+                    select cl.paperid2 from authorpaperlist ap, paper_citations cl 
+                    where ae.authorid2 = ap.authorid and ap.paperid = cl.paperid1
+                        and (not cl.paperid2 = ANY(paper_list)) -- this author hasn't cited any previous author's papers
+                )
+            )
+            )
+)
+select coalesce((
+select count(author_path)
+from path
+where authorid1 = 3552 and authorid2 = 321
+having count(author_path) <> 0
+), -1) count
+;
+
+--21--
+select conferencename, count(component) count
+from conference_connected_components
+group by conferencename
+order by count desc, conferencename
+;
+
+--22--
+select conferencename, array_length(component,1) count
+from conference_connected_components
+order by count, conferencename
+;
+
 --CLEANUP--
 drop view if exists authorpaper_edges cascade;
 drop view if exists author_edges cascade;
 -- drop view if exists simple_author_paths;
 drop view if exists paper_citations cascade;
 -- drop view if exists citations_per_author;
+drop view if exists authorconf_edges cascade;
