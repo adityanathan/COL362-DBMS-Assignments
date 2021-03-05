@@ -36,13 +36,19 @@ create view simple_paths as
     union
 
     select path.originairportid, flights.destairportid, city_path || fd.city
-    from flights, path, airports po, airports fd
+    from flights, path, airports fd
     where path.destairportid = flights.originairportid -- link for increasing hops
-        and flights.destairportid = fd.airportid and path.originairportid = po.airportid -- fdcity and pocity
+        and flights.destairportid = fd.airportid
         and (not fd.city = ANY(city_path)) -- ensure simple path
-        and po.city = 'Albuquerque' -- for efficiency (path has to start from albuquerqe otherwise no point in expanding it)
     )
     select * from path
+;
+
+create view interstate_flights as
+    select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+    from flights, airports a1, airports a2
+    where a1.airportid = originairportid and a2.airportid = destairportid
+        and a1.state <> a2.state -- only interstate flights
 ;
 
 --1--
@@ -59,11 +65,11 @@ create view simple_paths as
 --         where flights.destairportid = path.originairportid
 --             and flights.carrier = path.carrier
 -- )
--- select distinct airports.city
--- from path, airports
--- where path.originairportid = 10140
---     and path.destairportid = airports.airportid
--- order by airports.city
+-- select distinct pd.city as name
+-- from path, airports po, airports pd
+-- where path.originairportid = po.airportid and path.destairportid = pd.airportid
+--     and po.city = 'Albuquerque'
+-- order by pd.city
 -- ;
 
 --2--
@@ -80,11 +86,11 @@ create view simple_paths as
 --         where flights.destairportid = path.originairportid
 --             and flights.dayofweek = path.dayofweek
 -- )
--- select distinct airports.city
--- from path, airports
--- where path.originairportid = 10140
---     and path.destairportid = airports.airportid
--- order by airports.city
+-- select distinct pd.city as name
+-- from path, airports po, airports pd
+-- where path.originairportid = po.airportid and path.destairportid = pd.airportid
+--     and po.city = 'Albuquerque'
+-- order by pd.city
 -- ;
 
 --3--
@@ -111,6 +117,15 @@ create view simple_paths as
 -- having count(*) = 1
 -- ) temp, airports where airportid = destairportid
 -- order by city
+-- ;
+
+-- select pd.city as name
+-- from simple_paths, airports po, airports pd
+-- where originairportid = po.airportid and destairportid = pd.airportid
+--     and po.city = 'Albuquerque'
+-- group by pd.city
+-- having count(*) = 1
+-- order by pd.city
 -- ;
 
 --4--
@@ -167,29 +182,28 @@ create view simple_paths as
 -- ;
 
 --6--
--- with recursive path(originairportid, destairportid, city_path) as (
+with recursive path(originairportid, destairportid, city_path) as (
 
---     select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
---     from flights, airports a1, airports a2
---     where a1.airportid = originairportid and a2.airportid = destairportid
---         and a1.state <> a2.state -- only interstate flights
+    select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+    from flights, airports a1, airports a2
+    where a1.airportid = originairportid and a2.airportid = destairportid
+        and a1.state <> a2.state -- only interstate flights
 
---     union
+    union
 
---     select path.originairportid, flights.destairportid, city_path || fd.city
---     from flights, path, airports po, airports fd
---     where path.destairportid = flights.originairportid -- link
---         and flights.destairportid = fd.airportid and path.originairportid = po.airportid
---         and (not fd.city = ANY(city_path)) -- ensure simple path
---         and po.city = 'Albuquerque' -- for efficiency
--- )
--- select count(*) count -- number of paths between chicago and albuquerque through interstate flights
--- from path, airports po, airports pd
--- where path.originairportid = po.airportid and path.destairportid = pd.airportid
---     and po.city = 'Albuquerque' 
---     and pd.city = 'Chicago'
--- group by po.city, pd.city
--- ;
+    select path.originairportid, interstate_flights.destairportid, city_path || fd.city
+    from interstate_flights, path, airports po, airports fd
+    where path.destairportid = interstate_flights.originairportid -- link
+        and interstate_flights.destairportid = fd.airportid and path.originairportid = po.airportid
+        and (not fd.city = ANY(city_path)) -- ensure simple path
+        and po.city = 'Albuquerque' -- for efficiency
+)
+select coalesce(count(*),0) count -- count gives me number of paths without group by because origin city and dest city have been constrained
+from path, airports po, airports pd
+where path.originairportid = po.airportid and path.destairportid = pd.airportid
+    and po.city = 'Albuquerque' 
+    and pd.city = 'Chicago'
+;
 
 --7--
 -- with recursive path(originairportid, destairportid, city_path) as (
@@ -216,13 +230,29 @@ create view simple_paths as
 
 -----------------------------------------------------------------------------
 
-select po.city, pd.city, city_path
-from simple_paths, airports po, airports pd
-where simple_paths.originairportid = po.airportid and simple_paths.destairportid = pd.airportid
-    and po.city = 'Albuquerque'
-    -- and pd.city = 'Chicago'
-    and 'Washington' = ANY(city_path)
-;
+-- select coalesce(count(*), 0) count
+-- from simple_paths, airports po, airports pd
+-- where originairportid = po.airportid and destairportid = pd.airportid
+--     and po.city = 'Albuquerque'
+--     and pd.city = 'Chicago'
+--     and 'Washington' = ANY(city_path)
+-- ;
 
 --8--
+-- (select a.city as name1, b.city as name2
+-- from airports a, airports b
+-- where a.city <> b.city)
+-- except
+-- (select po.city, pd.city
+-- from simple_paths, airports po, airports pd
+-- where originairportid = po.airportid and destairportid = pd.airportid)
 
+-- order by name1, name2
+-- ;
+
+--9--
+
+
+--CLEANUP--
+drop view if exists simple_paths;
+drop view if exists interstate_flights;
