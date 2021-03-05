@@ -102,8 +102,8 @@ where a3.authorid <> 1235
 ;
 
 --14--
-select coalesce((
-select count(author_path) count
+select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 704 and authorid2 = 102)),
+(select count(author_path) count
 from simple_author_paths
 where authorid1 = 704 and authorid2 = 102
     and exists(
@@ -116,13 +116,12 @@ where authorid1 = 704 and authorid2 = 102
         ) temp
         where temp.authorid = ANY(author_path[2:array_length(author_path,1)-1]) -- omit A and B
     )
-having count(*) <> 0
-), -1) count
+)) count
 ;
 
 --15--
-select coalesce((
-select count(author_path) from
+select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 1745 and authorid2 = 456)),
+(select count(author_path) from
 (
 (
 with recursive path(authorid1, authorid2, author_path) as (
@@ -162,8 +161,7 @@ from path
 where authorid1 = 1745 and authorid2 = 456
 )
 ) temp
-having count(author_path) <> 0
-), -1) as count
+)) count
 ;
 
 --16--
@@ -179,31 +177,33 @@ except
 ) temp
 group by author1
 order by count(author2) desc, author1
+limit 10
 ;
 
 --17--
-select authora as authorid from -- number of third degree citations
+select third_degree.authorid1 authorid from
 (
-(select distinct a.authorid authora, b.authorid authorb -- authora cited authorb
-from authorpaperlist a, paper_citations pc, authorpaperlist b
-where a.paperid = pc.paperid1 --author's paperid1 cited paperid2
-    and pc.paperid2 = b.paperid
-    and a.authorid <> b.authorid)
-INTERSECT
-(select authorid1, authorid2 -- authorid2 is 3-degree connection of authorid1
+select a.authorid, count(paperid1) num
+from authorpaperlist a, paper_citations pc
+where a.paperid = pc.paperid2
+group by a.authorid
+) author_citations, -- num of citations each author has received
+(
+select authorid1, authorid2
 from simple_author_paths ap
 group by authorid1, authorid2
 having min(array_length(author_path,1)-1) = 3
-order by authorid1, authorid2)
-) temp
-group by authora
-order by count(authorb) desc, authora -- count number of third degree citations
+) third_degree -- third degree connections
+
+where third_degree.authorid2 = author_citations.authorid
+group by authorid1
+order by sum(num) desc, authorid1
 limit 10
 ;
 
 --18--
-select coalesce((
-select count(author_path)
+select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 3552 and authorid2 = 321)),
+(select count(author_path) count
 from simple_author_paths
 where 
     authorid1 = 3552 and authorid2 = 321
@@ -214,8 +214,7 @@ where
             authorid in (1436, 562, 921)
             and authorid = ANY(author_path)
     )
-having count(author_path) <> 0
-), -1) count
+)) count
 ;
 
 --19--
@@ -263,12 +262,11 @@ with recursive path(authorid1, authorid2, author_path, city_list, paper_list, ci
             )
             )
 )
-select coalesce((
-select count(author_path)
+select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 3552 and authorid2 = 321)),
+(select count(author_path)
 from path
 where authorid1 = 3552 and authorid2 = 321
-having count(author_path) <> 0
-), -1) count
+)) count
 ;
 
 --20--
@@ -276,8 +274,8 @@ with recursive path(authorid1, authorid2, author_path, paper_list, cite_list) as
 
         select distinct authorid1, authorid2, 
             array[authorid1, authorid2] author_path, 
-            array(select paperid from authorpaperlist ap where ap.authorid = authorid2) as paper_list, -- don't consider first guy
-            array(select paperid from authorpaperlist ap, paper_citations cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1) as cite_list -- don't consider first guy
+            array(select paperid from authorpaperlist ap where ap.authorid = authorid2) as paper_list,
+            array(select paperid from authorpaperlist ap, paper_citations cl where authorid2 = ap.authorid and ap.paperid = cl.paperid1) as cite_list
 
         from author_edges, authordetails a1, authordetails a2
             where authorid1 = a1.authorid and authorid2 = a2.authorid
@@ -313,12 +311,11 @@ with recursive path(authorid1, authorid2, author_path, paper_list, cite_list) as
             )
             )
 )
-select coalesce((
-select count(author_path)
+select least((select -1 where not exists (select * from simple_author_paths where authorid1 = 3552 and authorid2 = 321)),
+(select count(author_path)
 from path
 where authorid1 = 3552 and authorid2 = 321
-having count(author_path) <> 0
-), -1) count
+)) count
 ;
 
 --21--
@@ -337,7 +334,5 @@ order by count, conferencename
 --CLEANUP--
 drop view if exists authorpaper_edges cascade;
 drop view if exists author_edges cascade;
--- drop view if exists simple_author_paths;
 drop view if exists paper_citations cascade;
--- drop view if exists citations_per_author;
 drop view if exists authorconf_edges cascade;
