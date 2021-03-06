@@ -173,6 +173,43 @@ where originairportid = po.airportid and destairportid = pd.airportid)
 order by name1, name2
 ;
 
+--9--
+select i, coalesce(delay,0) from
+    (select dayofmonth as day, sum(departuredelay + arrivaldelay) as delay
+    from flights f, airports a
+    where f.originairportid = a.airportid
+        and a.city = 'Albuquerque'
+    group by dayofmonth
+    order by sum(departuredelay + arrivaldelay), day) temp1
+right join 
+    (select i from generate_series(1, 31) as i) temp2
+on day = i
+;
+
+--10--
+select city1 as name from
+(
+select distinct fo.city city1, fd.city city2
+from flights, airports fo, airports fd
+where fo.airportid = originairportid and fd.airportid = destairportid
+    and fo.state = 'NY' and fd.state = 'NY'
+) temp
+group by city1
+having count(city2) = (
+        select count(*) from
+            (select city
+            from flights, airports
+            where originairportid = airportid and state = 'NY'
+            union
+            select city
+            from flights, airports
+            where destairportid = airportid and state = 'NY') temp2
+    ) - 1 -- excluding the travel center itself
+order by name
+;
+
+--11--
+
 --CLEANUP--
 drop view if exists simple_paths;
 drop view if exists interstate_flights;

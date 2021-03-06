@@ -1,30 +1,3 @@
--- WITH RECURSIVE
--- Ancestor(anc, desc) AS
---     ((SELECT parent, child FROM Parent)
--- UNION
---     (SELECT a1.anc, a2.desc
---     FROM Ancestor a1, Ancestor a2
---     WHERE a1.desc = a2.anc))
--- SELECT anc
--- FROM Ancestor
--- WHERE desc = 'Bart';
-
--- WITH RECURSIVE search_graph(parent, child, id, depth, path, cycle)
--- AS (
---         SELECT e.parent, e.child, e.id, 1,
---             ARRAY[e.id],
---             false
---         FROM edge e
---         UNION ALL
---         SELECT e.parent, e.child, e.id, sg.depth + 1,
---             path || e.id,
---             e.id = ANY(path)
---         FROM edge e, search_graph sg
---         WHERE e.parent = sg.child AND NOT cycle
--- )
--- SELECT * FROM search_graph;
-
----------------------------------------------------------------------
 --PREAMBLE--
 create view simple_paths as
     with recursive path(originairportid, destairportid, city_path) as (
@@ -182,28 +155,28 @@ create view interstate_flights as
 -- ;
 
 --6--
-with recursive path(originairportid, destairportid, city_path) as (
+-- with recursive path(originairportid, destairportid, city_path) as (
 
-    select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
-    from flights, airports a1, airports a2
-    where a1.airportid = originairportid and a2.airportid = destairportid
-        and a1.state <> a2.state -- only interstate flights
+--     select originairportid, destairportid, array[a1.city, a2.city] -- path of cities grows rightwards
+--     from flights, airports a1, airports a2
+--     where a1.airportid = originairportid and a2.airportid = destairportid
+--         and a1.state <> a2.state -- only interstate flights
 
-    union
+--     union
 
-    select path.originairportid, interstate_flights.destairportid, city_path || fd.city
-    from interstate_flights, path, airports po, airports fd
-    where path.destairportid = interstate_flights.originairportid -- link
-        and interstate_flights.destairportid = fd.airportid and path.originairportid = po.airportid
-        and (not fd.city = ANY(city_path)) -- ensure simple path
-        and po.city = 'Albuquerque' -- for efficiency
-)
-select coalesce(count(*),0) count -- count gives me number of paths without group by because origin city and dest city have been constrained
-from path, airports po, airports pd
-where path.originairportid = po.airportid and path.destairportid = pd.airportid
-    and po.city = 'Albuquerque' 
-    and pd.city = 'Chicago'
-;
+--     select path.originairportid, interstate_flights.destairportid, city_path || fd.city
+--     from interstate_flights, path, airports po, airports fd
+--     where path.destairportid = interstate_flights.originairportid -- link
+--         and interstate_flights.destairportid = fd.airportid and path.originairportid = po.airportid
+--         and (not fd.city = ANY(city_path)) -- ensure simple path
+--         and po.city = 'Albuquerque' -- for efficiency
+-- )
+-- select coalesce(count(*),0) count -- count gives me number of paths without group by because origin city and dest city have been constrained
+-- from path, airports po, airports pd
+-- where path.originairportid = po.airportid and path.destairportid = pd.airportid
+--     and po.city = 'Albuquerque' 
+--     and pd.city = 'Chicago'
+-- ;
 
 --7--
 -- with recursive path(originairportid, destairportid, city_path) as (
@@ -251,7 +224,39 @@ where path.originairportid = po.airportid and path.destairportid = pd.airportid
 -- ;
 
 --9--
+-- select i, coalesce(delay,0) from
+--     (select dayofmonth as day, sum(departuredelay + arrivaldelay) as delay
+--     from flights f, airports a
+--     where f.originairportid = a.airportid
+--         and a.city = 'Albuquerque'
+--     group by dayofmonth
+--     order by sum(departuredelay + arrivaldelay), day) temp1
+-- right join 
+--     (select i from generate_series(1, 31) as i) temp2
+-- on day = i
+-- ;
 
+--10--
+select city1 as name from
+(
+select distinct fo.city city1, fd.city city2
+from flights, airports fo, airports fd
+where fo.airportid = originairportid and fd.airportid = destairportid
+    and fo.state = 'NY' and fd.state = 'NY'
+) temp
+group by city1
+having count(city2) = (
+        select count(*) from
+            (select city
+            from flights, airports
+            where originairportid = airportid and state = 'NY'
+            union
+            select city
+            from flights, airports
+            where destairportid = airportid and state = 'NY') temp2
+    ) - 1 -- excluding the travel center itself
+order by name
+;
 
 --CLEANUP--
 drop view if exists simple_paths;
