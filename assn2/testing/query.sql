@@ -188,7 +188,27 @@ create view reachable(originairportid, destairportid) as
 -- ;
 
 --11--
+-- with recursive path(originairportid, destairportid, city_path, cycle, last_delay) as (
+--     select originairportid, destairportid, array[a1.city, a2.city], (a1.city = a2.city), (flights.arrivaldelay + flights.departuredelay) -- path of cities grows rightwards
+--     from flights, airports a1, airports a2
+--     where a1.airportid = originairportid and a2.airportid = destairportid -- for getting the cities
+
+--     union
+
+--     select path.originairportid, flights.destairportid, city_path || fd.city, (po.city = fd.city) as cycle, (flights.arrivaldelay + flights.departuredelay)
+--     from flights, path, airports fd, airports po
+--     where path.destairportid = flights.originairportid -- link for increasing hops
+--         and flights.destairportid = fd.airportid and path.originairportid = po.airportid
+--         and (not path.cycle) -- do not expand cycles
+--         and ((not fd.city = ANY(city_path)) or fd.city = po.city) -- ensure simple path but allow formation of simple cycles
+--         and (flights.arrivaldelay + flights.departuredelay) >= path.last_delay
+--     )
+--     select distinct po.city as name1, pd.city as name2
+--     from path, airports po, airports pd
+--     where path.originairportid = po.airportid and path.destairportid = pd.airportid
+--     order by po.city, pd.city
+-- ;
 
 --CLEANUP--
 drop view if exists simple_paths;
--- drop view if exists interstate_flights;
+drop view if exists reachable;
