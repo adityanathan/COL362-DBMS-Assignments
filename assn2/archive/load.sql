@@ -21,7 +21,7 @@ CREATE TABLE flights (
 );
 
 \copy airports from '/home/nate/acads/sem8/COL362/Assignments/assn2/DB/airports.csv' delimiter ',' csv header;
-\copy flights from '/home/nate/acads/sem8/COL362/Assignments/assn2/DB/flights_final.csv' delimiter ',' csv header;
+\copy flights from '/home/nate/acads/sem8/COL362/Assignments/assn2/DB/flights_reduced.csv' delimiter ',' csv header;
 
 CREATE TABLE authordetails (
     authorid bigint NOT NULL,

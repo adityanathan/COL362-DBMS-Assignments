@@ -99,6 +99,7 @@ group by authorid2
 ) temp
 right join authordetails a3 on authorid2 = a3.authorid
 where a3.authorid <> 1235
+order by length desc, authorid2
 ;
 
 --13--
